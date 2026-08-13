@@ -1,0 +1,20 @@
+{
+  "id": "fix-rss-2",
+  "source": {
+    "id": "rss-anthropic-1",
+    "source_type": "rss",
+    "title": "Anthropic updates Claude with computer use",
+    "url": "https://example.com/claude",
+    "facts": [
+      "Anthropic updates Claude with computer use",
+      "Agents can click and type in a desktop sandbox"
+    ],
+    "raw": {},
+    "fetched_at": "2026-08-01T12:00:00.000Z"
+  },
+  "expect": {
+    "minScore": 0.5,
+    "mustNotMatch": ["I launched Claude"],
+    "maxLength": 280
+  }
+}
