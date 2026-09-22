@@ -1,0 +1,389 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ────────────────────────────────────────────────────────────────
+// Identity
+// ────────────────────────────────────────────────────────────────
+
+model User {
+  id              String   @id @default(cuid())
+  email           String   @unique
+  name            String?
+  stripeCustomerId String? @unique
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  connectedAccounts ConnectedAccount[]
+  subscriptions     Subscription[]
+  usageCounters     UsageCounter[]
+  oneTimePurchases  OneTimePurchase[]
+}
+
+enum Platform {
+  X
+  LINKEDIN
+  REDDIT
+}
+
+enum AccountStatus {
+  CONNECTED
+  DISCONNECTED
+  EXPIRED
+}
+
+model ConnectedAccount {
+  id               String        @id @default(cuid())
+  userId           String
+  user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  platform         Platform
+  platformUserId   String
+  handle           String
+  // Encrypted at the application layer before writing — never store plaintext tokens.
+  accessTokenEnc   String
+  refreshTokenEnc  String?
+  scopes           String[]
+  status           AccountStatus @default(CONNECTED)
+  connectedAt      DateTime      @default(now())
+  disconnectedAt   DateTime?
+
+  posts            Post[]
+  followerSamples  FollowerSample[]
+  reports          Report[]
+  suggestions      Suggestion[]
+  complianceFlags  ComplianceFlag[]
+  opportunities    Opportunity[]
+  drafts           Draft[]
+
+  @@unique([platform, platformUserId])
+  @@index([userId])
+}
+
+// ────────────────────────────────────────────────────────────────
+// Ingested content + scoring (v0 / v1)
+// ────────────────────────────────────────────────────────────────
+
+enum PostType {
+  TEXT
+  THREAD
+  IMAGE
+  VIDEO
+}
+
+model Post {
+  id                 String           @id @default(cuid())
+  connectedAccountId String
+  connectedAccount   ConnectedAccount @relation(fields: [connectedAccountId], references: [id], onDelete: Cascade)
+  platformPostId     String
+  type               PostType
+  text               String
+  publishedAt        DateTime
+  // Raw metrics snapshot as ingested (views, likes, retweets, replies, etc.)
+  metrics            Json
+  ingestedAt         DateTime         @default(now())
+
+  score              PostScore?
+  complianceFlags    ComplianceFlag[]
+
+  @@unique([connectedAccountId, platformPostId])
+  @@index([connectedAccountId, publishedAt])
+}
+
+model PostScore {
+  id               String   @id @default(cuid())
+  postId           String   @unique
+  post             Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  hookScore        Int
+  structureScore   Int
+  sentimentScore   Int
+  shareabilityScore Int
+  aiSlopScore      Int
+  overallScore     Int
+  computedAt       DateTime @default(now())
+}
+
+// ────────────────────────────────────────────────────────────────
+// Audience (v1)
+// ────────────────────────────────────────────────────────────────
+
+enum FollowerType {
+  ENGINEER
+  FOUNDER
+  INVESTOR
+  JOURNALIST
+  GENERAL
+  OTHER
+}
+
+model FollowerSample {
+  id                 String           @id @default(cuid())
+  connectedAccountId String
+  connectedAccount   ConnectedAccount @relation(fields: [connectedAccountId], references: [id], onDelete: Cascade)
+  platformFollowerId String
+  handle             String
+  classifiedType     FollowerType
+  engagementCount    Int              @default(0)
+  lastActiveAt       DateTime?
+  sampledAt          DateTime         @default(now())
+
+  @@unique([connectedAccountId, platformFollowerId])
+  @@index([connectedAccountId, classifiedType])
+}
+
+// ────────────────────────────────────────────────────────────────
+// Guideline engine + compliance
+// ────────────────────────────────────────────────────────────────
+
+enum Severity {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+model GuidelineRule {
+  id           String   @id @default(cuid())
+  platform     Platform
+  ruleId       String
+  category     String
+  description  String
+  severity     Severity
+  sourceUrl    String
+  version      Int      @default(1)
+  effectiveAt  DateTime @default(now())
+
+  complianceFlags ComplianceFlag[]
+
+  @@unique([platform, ruleId, version])
+}
+
+enum FlagStatus {
+  OPEN
+  DISMISSED
+  RESOLVED
+}
+
+model ComplianceFlag {
+  id                 String           @id @default(cuid())
+  connectedAccountId String
+  connectedAccount   ConnectedAccount @relation(fields: [connectedAccountId], references: [id], onDelete: Cascade)
+  postId             String?
+  post               Post?            @relation(fields: [postId], references: [id], onDelete: SetNull)
+  guidelineRuleId    String
+  rule               GuidelineRule    @relation(fields: [guidelineRuleId], references: [id])
+  severity           Severity
+  explanation        String
+  status             FlagStatus       @default(OPEN)
+  flaggedAt          DateTime         @default(now())
+  resolvedAt         DateTime?
+
+  @@index([connectedAccountId, status])
+}
+
+// ────────────────────────────────────────────────────────────────
+// Reports (v1) + Suggestions (v2)
+// ────────────────────────────────────────────────────────────────
+
+enum ReportType {
+  POST_ANALYSIS
+  POSTMORTEM
+  WEEKLY
+}
+
+model Report {
+  id                 String           @id @default(cuid())
+  connectedAccountId String
+  connectedAccount   ConnectedAccount @relation(fields: [connectedAccountId], references: [id], onDelete: Cascade)
+  type               ReportType
+  // Full structured report payload (scores, breakdowns, narrative) — dashboard
+  // reads this directly rather than recomputing on every page load.
+  payload            Json
+  periodStart        DateTime
+  periodEnd          DateTime
+  createdAt          DateTime         @default(now())
+
+  oneTimePurchase    OneTimePurchase?
+
+  @@index([connectedAccountId, createdAt])
+}
+
+enum SuggestionCategory {
+  CONTENT
+  TIMING
+  COMPLIANCE
+}
+
+enum SuggestionStatus {
+  NEW
+  ACCEPTED
+  DISMISSED
+}
+
+model Suggestion {
+  id                 String             @id @default(cuid())
+  connectedAccountId String
+  connectedAccount   ConnectedAccount   @relation(fields: [connectedAccountId], references: [id], onDelete: Cascade)
+  category           SuggestionCategory
+  title              String
+  body               String
+  evidence           Json
+  status             SuggestionStatus   @default(NEW)
+  createdAt          DateTime           @default(now())
+
+  @@index([connectedAccountId, status])
+}
+
+// ────────────────────────────────────────────────────────────────
+// Engage — watch the feed, surface high-impression opportunities
+// ────────────────────────────────────────────────────────────────
+
+enum OpportunitySourceType {
+  FOLLOWING
+  MOST_ENGAGED
+  TOPIC
+}
+
+enum OpportunityStatus {
+  NEW
+  DRAFTED
+  DISMISSED
+}
+
+model Opportunity {
+  id                 String                @id @default(cuid())
+  connectedAccountId String
+  connectedAccount   ConnectedAccount      @relation(fields: [connectedAccountId], references: [id], onDelete: Cascade)
+  sourcePlatformPostId String
+  sourceHandle       String
+  sourceText         String
+  impressions        Int
+  sourceType         OpportunitySourceType
+  status             OpportunityStatus     @default(NEW)
+  discoveredAt       DateTime              @default(now())
+
+  drafts             Draft[]
+
+  @@unique([connectedAccountId, sourcePlatformPostId])
+  @@index([connectedAccountId, status, impressions])
+}
+
+// ────────────────────────────────────────────────────────────────
+// Compose & schedule (v3) — nothing here posts without Approve
+// ────────────────────────────────────────────────────────────────
+
+enum DraftKind {
+  ORIGINAL
+  REPLY
+  QUOTE
+}
+
+enum DraftStatus {
+  DRAFT
+  SCHEDULED
+  PUBLISHED
+  FAILED
+}
+
+model Draft {
+  id                 String           @id @default(cuid())
+  connectedAccountId String
+  connectedAccount   ConnectedAccount @relation(fields: [connectedAccountId], references: [id], onDelete: Cascade)
+  opportunityId      String?
+  opportunity        Opportunity?     @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+  kind               DraftKind
+  body               String
+  guardrailResults   Json
+  scheduledAt        DateTime?
+  status             DraftStatus      @default(DRAFT)
+  publishedPostId    String?
+  approvedAt         DateTime?
+  createdAt          DateTime         @default(now())
+
+  @@index([connectedAccountId, status])
+}
+
+// ────────────────────────────────────────────────────────────────
+// Pricing, plans, billing, usage
+// ────────────────────────────────────────────────────────────────
+
+enum PlanTier {
+  FREE
+  CREATOR
+  PRO
+  AGENCY
+}
+
+model Plan {
+  id                    String   @id @default(cuid())
+  tier                  PlanTier @unique
+  name                  String
+  monthlyPriceCents     Int
+  annualPriceCents      Int?
+  // null = unlimited
+  analysisLimitPerMonth Int?
+  connectedAccountLimit Int
+  seatLimit             Int      @default(1)
+  stripePriceIdMonthly  String?
+  stripePriceIdAnnual   String?
+  isActive              Boolean  @default(true)
+
+  subscriptions Subscription[]
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  TRIALING
+  PAST_DUE
+  CANCELED
+}
+
+model Subscription {
+  id                   String             @id @default(cuid())
+  userId               String
+  user                 User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  planId               String
+  plan                 Plan               @relation(fields: [planId], references: [id])
+  stripeSubscriptionId String?            @unique
+  status               SubscriptionStatus @default(ACTIVE)
+  currentPeriodStart   DateTime
+  currentPeriodEnd     DateTime
+  cancelAtPeriodEnd    Boolean            @default(false)
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  // A user can have historical subscriptions, but only one should be ACTIVE
+  // at a time — enforced at the application layer, not the schema.
+  @@index([userId, status])
+}
+
+model UsageCounter {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // "2026-09" style billing-period key — one row per user per period.
+  period        String
+  analysesUsed  Int      @default(0)
+  resetAt       DateTime
+
+  @@unique([userId, period])
+}
+
+enum PurchaseType {
+  SINGLE_REPORT
+}
+
+model OneTimePurchase {
+  id                    String       @id @default(cuid())
+  userId                String
+  user                  User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type                  PurchaseType
+  amountCents           Int
+  stripePaymentIntentId String       @unique
+  reportId              String?      @unique
+  report                Report?      @relation(fields: [reportId], references: [id])
+  purchasedAt           DateTime     @default(now())
+}

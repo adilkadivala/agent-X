@@ -1,24 +1,35 @@
 {
-  "name": "x-agent",
-  "version": "0.1.0",
+  "name": "supergrow-gateway",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "Authorized X signal ranking and content intelligence services",
+  "packageManager": "bun@1.2.20",
+  "description": "Express gateway for SuperGrow — auth, session, billing, and data endpoints",
   "scripts": {
-    "build": "tsc",
-    "signals": "tsx src/signals.ts",
-    "eval:voice": "tsx eval/voice.eval.ts",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "dev": "bun --watch src/index.ts",
+    "start": "bun src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate dev",
+    "db:seed": "bun src/seed.ts"
   },
-  "engines": {
-    "node": ">=20"
+  "prisma": {
+    "schema": "src/prisma/contract.prisma"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@prisma/client": "^5.22.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "oauth-1.0a": "^2.2.6",
+    "stripe": "^17.4.0"
+  },
   "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
     "@types/node": "^22.13.4",
-    "tsx": "^4.19.2",
+    "prisma": "^5.22.0",
     "typescript": "^5.7.3"
   }
 }
