@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { GATEWAY_URL } from "./gateway.js";
+import { GATEWAY_URL } from "./gateway";
 
 export type SessionMe = {
   signedIn: boolean;

@@ -1,6 +1,6 @@
 "use client";
 
-import { GATEWAY_URL, apiFetch } from "./gateway.js";
+import { apiFetch } from "./gateway";
 
 export async function startXConnect(): Promise<void> {
   const response = await apiFetch("/auth/x/connect", { method: "POST" });

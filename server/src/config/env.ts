@@ -64,6 +64,10 @@ export const env = {
   stripeSecretKey: pick(file, ["STRIPE_SECRET_KEY"]),
   stripeWebhookSecret: pick(file, ["STRIPE_TEST_WEBHOOK_SECRET", "STRIPE_WEBHOOK_SECRET"]),
   stripeApiVersion: pick(file, ["ATRIPE_API_VERSION"], "2025-02-24.acacia"),
+
+  // Agents API (Python internal service)
+  agentsApiUrl: pick(file, ["AGENTS_API_URL"], "http://127.0.0.1:8000").replace(/\/$/, ""),
+  serviceToken: pick(file, ["SERVICE_TOKEN"], "supergrow-internal-token-change-in-prod"),
 };
 
 export function assertAuthConfig(): void {
